@@ -1,6 +1,7 @@
 address 0x2 {
     module Bond {
         use Std::FixedPoint32;
+        use Std::Option;
         use 0x2::Coin;
         use 0x2::Date;
 
@@ -49,16 +50,18 @@ address 0x2 {
         }
 
         public fun updateDate(bond: &mut Bond, date: Date::Date): u64 {
-            let annualInterest = Coin::value(&bond.principal) / FixedPoint32::divide_u64(100, *&bond.interestRate);
-            let elapsedMonthsLifetime = Date::elapsedMonths(&bond.dateOfIssue, &date);
-            let totalMonths = bond.termYears * 12;
-            if (elapsedMonthsLifetime >= totalMonths) {
-                elapsedMonthsLifetime = totalMonths;
-                bond.matured = true;
+            if (!bond.matured) {
+                let annualInterest = Coin::value(&bond.principal) / FixedPoint32::divide_u64(100, *&bond.interestRate);
+                let elapsedMonthsLifetime = Date::elapsedMonths(&bond.dateOfIssue, &date);
+                let totalMonths = bond.termYears * 12;
+                if (elapsedMonthsLifetime >= totalMonths) {
+                    elapsedMonthsLifetime = totalMonths;
+                    bond.matured = true;
+                };
+                let addedInterest = (elapsedMonthsLifetime * annualInterest / 12) - bond.totalInterestPaid;
+                bond.totalInterestPaid = bond.totalInterestPaid + addedInterest;
+                bond.interestDue = bond.interestDue + addedInterest;
             };
-            let addedInterest = (elapsedMonthsLifetime * annualInterest / 12) - bond.totalInterestPaid;
-            bond.totalInterestPaid = bond.totalInterestPaid + addedInterest;
-            bond.interestDue = bond.interestDue + addedInterest;
             bond.interestDue
         }
 
@@ -73,9 +76,12 @@ address 0x2 {
             Coin::splitCoin(&mut bond.paidInterest, interestValue)
         }
 
-        public fun withdrawPrincipal(bond: &mut Bond): Coin::Coin {
+        public fun withdrawPrincipal(bond: &mut Bond): Option::Option<Coin::Coin> {
             let principalValue = principalValue(bond);
-            Coin::splitCoin(&mut bond.principal, principalValue)
+            if (bond.matured)
+                Option::some<Coin::Coin>(Coin::splitCoin(&mut bond.principal, principalValue))
+            else
+                Option::none<Coin::Coin>()
         }
 
         public fun burn(bond: Bond) {
