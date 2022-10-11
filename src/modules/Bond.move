@@ -12,15 +12,20 @@ address 0x2 {
             interestDue: u64,
             totalInterestPaid: u64,
             paidInterest: Coin::Coin,
+
+            termYears: u64,
+            matured: bool,
         }
 
         public fun create(principal: Coin::Coin,
                 interestRate: FixedPoint32::FixedPoint32,
-                dateOfIssue: Date::Date): Bond {
+                dateOfIssue: Date::Date,
+                termYears: u64): Bond {
             let paidInterest = Coin::mint(0);
             let interestDue = 0;
             let totalInterestPaid = 0;
-            Bond { principal, interestRate, dateOfIssue, interestDue, totalInterestPaid, paidInterest }
+            let matured = false;
+            Bond { principal, interestRate, dateOfIssue, interestDue, totalInterestPaid, paidInterest, termYears, matured }
         }
 
         public fun principalValue(bond: &Bond): u64 {
@@ -46,6 +51,11 @@ address 0x2 {
         public fun updateDate(bond: &mut Bond, date: Date::Date): u64 {
             let annualInterest = Coin::value(&bond.principal) / FixedPoint32::divide_u64(100, *&bond.interestRate);
             let elapsedMonthsLifetime = Date::elapsedMonths(&bond.dateOfIssue, &date);
+            let totalMonths = bond.termYears * 12;
+            if (elapsedMonthsLifetime >= totalMonths) {
+                elapsedMonthsLifetime = totalMonths;
+                bond.matured = true;
+            };
             let addedInterest = (elapsedMonthsLifetime * annualInterest / 12) - bond.totalInterestPaid;
             bond.totalInterestPaid = bond.totalInterestPaid + addedInterest;
             bond.interestDue = bond.interestDue + addedInterest;
@@ -63,14 +73,21 @@ address 0x2 {
             Coin::splitCoin(&mut bond.paidInterest, interestValue)
         }
 
-        public fun burn(bond: Bond): Date::Date {
-            let Bond { principal, interestRate, dateOfIssue, interestDue, totalInterestPaid, paidInterest } = bond;
+        public fun withdrawPrincipal(bond: &mut Bond): Coin::Coin {
+            let principalValue = principalValue(bond);
+            Coin::splitCoin(&mut bond.principal, principalValue)
+        }
+
+        public fun burn(bond: Bond) {
+            let Bond { principal, interestRate, dateOfIssue, interestDue, totalInterestPaid, paidInterest, termYears, matured } = bond;
             Coin::burn(principal);
             Coin::burn(paidInterest);
             interestRate;
             interestDue;
             totalInterestPaid;
-            dateOfIssue
+            termYears;
+            matured;
+            dateOfIssue;
         }
     }
 }
